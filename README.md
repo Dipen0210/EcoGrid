@@ -42,6 +42,10 @@ Core data flow:
 <img width="1470" height="580" alt="Screenshot 2025-10-26 at 12 36 13 AM" src="https://github.com/user-attachments/assets/66273244-7e8d-4bea-949b-44f0f7006c85" />
 
 
+<img width="1213" height="591" alt="Screenshot 2025-11-03 at 10 01 12 AM" src="https://github.com/user-attachments/assets/88f92514-7c42-478d-94bd-295a90cb01c4" />
+
+
+
 ## 🧰 Tech Stack
 - **Python**, **FastAPI**, **Streamlit**
 - **TensorFlow**, **Stable-Baselines3**, **scikit-learn**
