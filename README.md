@@ -37,6 +37,11 @@ Core data flow:
 
 ---
 
+## Dashboard
+
+<img width="1470" height="580" alt="Screenshot 2025-10-26 at 12 36 13 AM" src="https://github.com/user-attachments/assets/66273244-7e8d-4bea-949b-44f0f7006c85" />
+
+
 ## 🧰 Tech Stack
 - **Python**, **FastAPI**, **Streamlit**
 - **TensorFlow**, **Stable-Baselines3**, **scikit-learn**
