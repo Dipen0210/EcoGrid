@@ -44,7 +44,7 @@ Core data flow:
 
 <img width="1213" height="591" alt="Screenshot 2025-11-03 at 10 01 12 AM" src="https://github.com/user-attachments/assets/88f92514-7c42-478d-94bd-295a90cb01c4" />
 
-
+<img width="1221" height="581" alt="Screenshot 2025-11-03 at 10 00 58 AM" src="https://github.com/user-attachments/assets/53ee92a3-4b08-403d-b328-c12fd4438583" />
 
 ## 🧰 Tech Stack
 - **Python**, **FastAPI**, **Streamlit**
