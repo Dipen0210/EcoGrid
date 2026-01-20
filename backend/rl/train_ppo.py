@@ -251,14 +251,19 @@ def _load_carbon_dataset(
         return _synthetic_carbon_dataframe(horizon_hours)
 
     if "carbon_intensity_gco2_per_kwh" not in df.columns:
-        possible = [col for col in df.columns if "carbon" in col.lower()]
-        if possible:
-            df["carbon_intensity_gco2_per_kwh"] = df[possible[0]]
+        # Handle LSTM forecast file which uses 'predicted_carbon_intensity_gco2_per_kwh'
+        if "predicted_carbon_intensity_gco2_per_kwh" in df.columns:
+            df["carbon_intensity_gco2_per_kwh"] = df["predicted_carbon_intensity_gco2_per_kwh"]
+            logger.info("Using LSTM-predicted carbon intensity values.")
         else:
-            logger.warning(
-                "No carbon intensity column found; generating synthetic profile."
-            )
-            return _synthetic_carbon_dataframe(horizon_hours)
+            possible = [col for col in df.columns if "carbon" in col.lower()]
+            if possible:
+                df["carbon_intensity_gco2_per_kwh"] = df[possible[0]]
+            else:
+                logger.warning(
+                    "No carbon intensity column found; generating synthetic profile."
+                )
+                return _synthetic_carbon_dataframe(horizon_hours)
 
     if "timestamp" in df.columns:
         df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)

@@ -1,9 +1,10 @@
 """
-Streamlit dashboard for the Smart Grid Carbon Reduction System (RL Edition).
+EcoGrid Dashboard - Carbon-Aware Energy Scheduling System.
 
-Provides controls to interact with the FastAPI backend to fetch data, run demand
-forecasts, and execute the RL-based carbon-aware scheduler while visualising the
-outcomes with Plotly charts.
+Single-page sequential flow:
+1. Fetch weather + carbon data
+2. LSTM predicts future carbon intensity
+3. RL scheduler optimizes energy consumption
 """
 
 from __future__ import annotations
@@ -21,11 +22,9 @@ import streamlit as st
 # Configuration
 # ---------------------------------------------------------------------------
 
-# Configure logging for debugging within Streamlit's runtime.
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-logger = logging.getLogger("streamlit-app")
+logger = logging.getLogger("ecogrid-dashboard")
 
-# Directory to persist chart exports.
 OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 DEFAULT_BACKEND_URL = "http://127.0.0.1:8000"
@@ -36,7 +35,6 @@ DEFAULT_BACKEND_URL = "http://127.0.0.1:8000"
 # ---------------------------------------------------------------------------
 
 def build_url(base_url: str, endpoint: str) -> str:
-    """Compose a full URL for the backend endpoint."""
     return f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
 
 
@@ -45,356 +43,268 @@ def request_backend(
     url: str,
     *,
     json_payload: Optional[Dict[str, Any]] = None,
-    timeout: int = 60,
+    timeout: int = 120,
 ) -> Dict[str, Any]:
-    """Perform an HTTP request with graceful error handling."""
     try:
         response = requests.request(method=method, url=url, json=json_payload, timeout=timeout)
         response.raise_for_status()
         return response.json()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.exception("Backend request failed: %s", exc)
-        st.error(f"Request to {url} failed: {exc}")
+        st.error(f"Request failed: {exc}")
         return {}
 
 
 def read_csv_if_exists(path_str: Optional[str]) -> Optional[pd.DataFrame]:
-    """Read a CSV path returned by the backend if the file exists."""
     if not path_str:
         return None
     path = Path(path_str)
     if not path.exists():
-        st.warning(f"File {path} not found on disk.")
         return None
     try:
         return pd.read_csv(path)
-    except Exception as exc:  # noqa: BLE001
-        st.error(f"Failed to read {path}: {exc}")
+    except Exception:
         return None
-
-
-def save_chart(fig: go.Figure, filename: str) -> Path:
-    """Persist Plotly figure as HTML snapshot under frontend/output/."""
-    output_path = OUTPUT_DIR / f"{filename}.html"
-    fig.write_html(str(output_path))
-    st.caption(f"Chart saved to: {output_path}")
-    return output_path
 
 
 # ---------------------------------------------------------------------------
-# Streamlit layout helpers
-# ---------------------------------------------------------------------------
-
-def render_header() -> None:
-    """Render the dashboard header."""
-    st.title("⚡ Smart Grid Carbon Reduction System (RL Edition)")
-    st.write(
-        "Interact with the reinforcement learning powered backend to forecast demand, "
-        "optimise energy schedules, and track carbon savings."
-    )
-
-
-def render_sidebar() -> tuple[Dict[str, Any], Dict[str, bool]]:
-    """Render sidebar controls and return parameter values plus action triggers."""
-    st.sidebar.header("⚙️ Scheduler Parameters")
-    total_kwh = st.sidebar.number_input("Total Energy (kWh)", min_value=10.0, max_value=500.0, value=70.0)
-    max_kw = st.sidebar.number_input("Max Power (kW)", min_value=1.0, max_value=20.0, value=7.2)
-    hours = st.sidebar.number_input("Horizon (hours)", min_value=1, max_value=48, value=24, step=1)
-    st.sidebar.markdown("---")
-    st.sidebar.header("🗂 Actions")
-    fetch_trigger = st.sidebar.button("📡 Fetch Latest Data", use_container_width=True)
-    forecast_trigger = st.sidebar.button("🔮 Run Forecast", use_container_width=True)
-    rl_trigger = st.sidebar.button("🧠 Run RL Scheduler", use_container_width=True)
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("Run operations here; results stay visible in the main panel.")
-    return (
-        {
-            "total_kwh": total_kwh,
-            "max_kw": max_kw,
-            "hours": int(hours),
-        },
-        {
-            "fetch": fetch_trigger,
-            "forecast": forecast_trigger,
-            "rl": rl_trigger,
-        },
-    )
-
-
-def initialize_session_state() -> None:
-    """Ensure keys exist in Streamlit session state for persisted results."""
-    defaults = {
-        "fetch_result": None,
-        "forecast_result": None,
-        "rl_result": None,
-    }
-    for key, default in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = default
-
-
-def render_status(backend_url: str) -> None:
-    """Display backend status information."""
-    status_url = build_url(backend_url, "/status")
-    status = request_backend("GET", status_url)
-    if status:
-        st.success(f"Backend status: {status.get('message', 'unknown')}")
-    else:
-        st.warning("Unable to reach backend status endpoint.")
-
-
-def perform_fetch_data(backend_url: str) -> Optional[Dict[str, Any]]:
-    """Trigger the fetch-data workflow and return the backend response plus dataset."""
-    fetch_url = build_url(backend_url, "/fetch-data")
-    response = request_backend("GET", fetch_url)
-    if not response:
-        return None
-    dataset = read_csv_if_exists(response.get("path"))
-    return {
-        "response": response,
-        "dataset": dataset,
-    }
-
-
-def render_fetch_result(result: Dict[str, Any]) -> None:
-    """Render the outcome of a fetch-data run."""
-    response = result.get("response")
-    if not response:
-        return
-    st.success(response.get("message", "Fetch completed."))
-    st.json(response)
-    metadata = response.get("metadata") or {}
-    label = metadata.get("label")
-    if label == "year":
-        st.info("Baseline 1-year datasets captured. Copies also saved as latest aliases for initial training.")
-    elif label == "latest":
-        st.info("Weekly refresh completed. Downstream components now use the freshest 7-day window.")
-    dataset = result.get("dataset")
-    if isinstance(dataset, pd.DataFrame):
-        st.dataframe(dataset.tail(10), use_container_width=True)
-
-
-def perform_forecast(backend_url: str) -> Optional[Dict[str, Any]]:
-    """Run demand forecast and return both the backend response and dataframe."""
-    forecast_url = build_url(backend_url, "/forecast-demand")
-    response = request_backend("POST", forecast_url)
-    if not response:
-        return None
-    dataframe = read_csv_if_exists(response.get("path"))
-    return {
-        "response": response,
-        "dataframe": dataframe,
-    }
-
-
-def render_forecast_result(result: Dict[str, Any], *, save_chart_output: bool) -> None:
-    """Visualise the forecast result and optionally persist the chart."""
-    response = result.get("response")
-    if not response:
-        return
-    st.success(response.get("message", "Forecast generated."))
-    st.json(response)
-    metadata = response.get("metadata") or {}
-    history_start = metadata.get("history_start")
-    history_end = metadata.get("history_end")
-    if history_start and history_end:
-        st.info(
-            f"Forecast trained on demand history from {history_start} to {history_end} (UTC)."
-        )
-    dataframe = result.get("dataframe")
-    if not isinstance(dataframe, pd.DataFrame):
-        st.warning("Forecast data unavailable.")
-        return
-
-    figure = go.Figure()
-    figure.add_trace(
-        go.Scatter(
-            x=pd.to_datetime(dataframe["timestamp"]),
-            y=dataframe["forecast_mw"],
-            mode="lines+markers",
-            name="Forecast MW",
-        )
-    )
-    figure.update_layout(
-        title="24h Demand Forecast",
-        xaxis_title="Time (UTC)",
-        yaxis_title="Demand (MW)",
-        template="plotly_dark",
-    )
-    st.plotly_chart(figure, use_container_width=True)
-    if save_chart_output:
-        save_chart(figure, "demand_forecast")
-    st.info(
-        f"Forecast includes {len(dataframe)} points spanning "
-        f"{dataframe['timestamp'].min()} to {dataframe['timestamp'].max()}."
-    )
-
-
-def perform_run_rl(
-    backend_url: str,
-    *,
-    total_kwh: float,
-    max_kw: float,
-    hours: int,
-) -> Optional[Dict[str, Any]]:
-    """Execute the RL scheduler and return the backend response plus schedule dataframe."""
-    rl_url = build_url(backend_url, "/run-rl")
-    payload = {
-        "total_kwh": total_kwh,
-        "max_kw": max_kw,
-        "hours": hours,
-    }
-    response = request_backend("POST", rl_url, json_payload=payload)
-    if not response:
-        return None
-
-    schedule_records = response.get("schedule") or []
-    dataframe = pd.DataFrame(schedule_records) if schedule_records else None
-    return {
-        "response": response,
-        "dataframe": dataframe,
-    }
-
-
-def render_rl_result(result: Dict[str, Any], *, save_chart_output: bool) -> None:
-    """Render RL scheduling outputs including metrics and charts."""
-    response = result.get("response")
-    if not response:
-        return
-    st.success(response.get("message", "RL scheduling completed."))
-    st.json(response)
-
-    dataframe = result.get("dataframe")
-    if not isinstance(dataframe, pd.DataFrame) or dataframe.empty:
-        st.warning("No schedule data returned from backend.")
-        return
-
-    st.dataframe(dataframe, use_container_width=True)
-
-    metadata = response.get("metadata") or {}
-    carbon_saving_percent = float(metadata.get("carbon_saving_percent", response.get("carbon_saving_percent", 0.0)))
-    total_emissions = float(metadata.get("total_emissions_kg", response.get("total_emissions_kg", 0.0)))
-    energy_target_met = float(metadata.get("energy_target_met_percent", response.get("energy_target_met_percent", 0.0)))
-
-    met_col, co2_col, energy_col = st.columns(3)
-    with co2_col:
-        st.metric(label="Total CO₂ (kg)", value=f"{total_emissions:.2f}")
-    with met_col:
-        st.metric(label="CO₂ Reduction", value=f"{carbon_saving_percent:.2f}%")
-    with energy_col:
-        st.metric(label="Energy Target Met", value=f"{energy_target_met:.2f}%")
-
-    fig = go.Figure()
-    fig.add_trace(
-        go.Bar(
-            x=dataframe["hour"],
-            y=dataframe["energy_kwh"],
-            name="Energy Dispatch (kWh)",
-            marker_color="#1f77b4",
-            yaxis="y1",
-        )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=dataframe["hour"],
-            y=dataframe["carbon_intensity_gco2_per_kwh"],
-            mode="lines+markers",
-            name="Carbon Intensity (gCO₂/kWh)",
-            line=dict(color="#ff7f0e"),
-            yaxis="y2",
-        )
-    )
-    fig.update_layout(
-        title="RL Schedule vs Carbon Intensity",
-        xaxis_title="Hour",
-        yaxis=dict(title="Energy (kWh)", side="left"),
-        yaxis2=dict(title="Carbon Intensity (gCO₂/kWh)", overlaying="y", side="right"),
-        template="plotly_white",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    )
-    st.plotly_chart(fig, use_container_width=True)
-    if save_chart_output:
-        save_chart(fig, "rl_schedule")
-
-    dispatched = dataframe["energy_kwh"].sum()
-    st.info(f"RL scheduler dispatched {dispatched:.2f} kWh across {len(dataframe)} hours.")
-
-
-# ---------------------------------------------------------------------------
-# Main Streamlit application flow
+# Main Application
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    """Entry point for the Streamlit app."""
-    render_header()
-    initialize_session_state()
-    user_inputs, actions = render_sidebar()
-    backend_url = DEFAULT_BACKEND_URL
-
-    # Display backend status on every page load.
-    render_status(backend_url)
-
-    triggered_action: Optional[str] = None
-
-    if actions["fetch"]:
-        result = perform_fetch_data(backend_url)
-        if result is not None:
-            st.session_state["fetch_result"] = result
-        triggered_action = "fetch"
-
-    if actions["forecast"]:
-        result = perform_forecast(backend_url)
-        if result is not None:
-            st.session_state["forecast_result"] = result
-        triggered_action = "forecast"
-
-    if actions["rl"]:
-        result = perform_run_rl(
-            backend_url,
-            total_kwh=user_inputs["total_kwh"],
-            max_kw=user_inputs["max_kw"],
-            hours=user_inputs["hours"],
-        )
-        if result is not None:
-            st.session_state["rl_result"] = result
-        triggered_action = "rl"
-
-    st.subheader("Results")
-    sections_rendered = 0
-
-    fetch_result = st.session_state.get("fetch_result")
-    if fetch_result:
-        sections_rendered += 1
-        st.markdown("### 📡 Latest Data Fetch")
-        render_fetch_result(fetch_result)
-
-    forecast_result = st.session_state.get("forecast_result")
-    if forecast_result:
-        if sections_rendered:
-            st.markdown("---")
-        sections_rendered += 1
-        st.markdown("### 🔮 Demand Forecast")
-        render_forecast_result(
-            forecast_result,
-            save_chart_output=triggered_action == "forecast",
-        )
-
-    rl_result = st.session_state.get("rl_result")
-    if rl_result:
-        if sections_rendered:
-            st.markdown("---")
-        sections_rendered += 1
-        st.markdown("### 🧠 RL Scheduler")
-        render_rl_result(
-            rl_result,
-            save_chart_output=triggered_action == "rl",
-        )
-
-    if not sections_rendered:
-        st.info("Use the sidebar to fetch data, run forecasts, or execute the RL scheduler.")
-
+    st.set_page_config(
+        page_title="EcoGrid",
+        page_icon="⚡",
+        layout="wide",
+    )
+    
+    # Header
+    st.title("⚡ EcoGrid: Carbon-Aware Energy Scheduler")
+    st.markdown("**Pipeline:** Fetch Data → Forecast Carbon → Optimize Schedule")
     st.markdown("---")
-    st.caption("Need API details? Visit the FastAPI documentation served by the backend at `/docs`.")
+    
+    # Initialize session state
+    if "fetch_result" not in st.session_state:
+        st.session_state["fetch_result"] = None
+    if "forecast_result" not in st.session_state:
+        st.session_state["forecast_result"] = None
+    if "rl_result" not in st.session_state:
+        st.session_state["rl_result"] = None
+    
+    backend_url = DEFAULT_BACKEND_URL
+    
+    # Check backend status
+    status = request_backend("GET", build_url(backend_url, "/status"))
+    if status:
+        st.success(f"✅ {status.get('message', 'Backend connected')}")
+    else:
+        st.error("❌ Backend not reachable")
+        return
+    
+    # Sidebar for parameters
+    st.sidebar.header("⚙️ Parameters")
+    total_kwh = st.sidebar.number_input("Total Energy (kWh)", min_value=10.0, max_value=500.0, value=70.0)
+    max_kw = st.sidebar.number_input("Max Power (kW)", min_value=1.0, max_value=20.0, value=7.2)
+    hours = st.sidebar.number_input("Horizon (hours)", min_value=1, max_value=48, value=24, step=1)
+    
+    # Reset button
+    st.sidebar.markdown("---")
+    if st.sidebar.button("🔄 Reset All", use_container_width=True):
+        st.session_state["fetch_result"] = None
+        st.session_state["forecast_result"] = None
+        st.session_state["rl_result"] = None
+        st.rerun()
+    
+    # =========================================================================
+    # STEP 1: FETCH DATA
+    # =========================================================================
+    st.header("📡 Step 1: Fetch Data")
+    
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        fetch_clicked = st.button("🔄 Fetch Data", use_container_width=True)
+    
+    if fetch_clicked:
+        with st.spinner("Fetching weather and carbon data..."):
+            response = request_backend("GET", build_url(backend_url, "/fetch-data"))
+            if response:
+                dataset = read_csv_if_exists(response.get("path"))
+                st.session_state["fetch_result"] = {"response": response, "dataset": dataset}
+    
+    # Show fetch results
+    if st.session_state["fetch_result"]:
+        result = st.session_state["fetch_result"]
+        response = result.get("response", {})
+        dataset = result.get("dataset")
+        
+        st.success(f"✅ {response.get('message', 'Data fetched')}")
+        
+        if isinstance(dataset, pd.DataFrame) and not dataset.empty:
+            # Summary metrics
+            if "carbon_intensity_gco2_per_kwh" in dataset.columns:
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Data Points", len(dataset))
+                m2.metric("Avg Carbon", f"{dataset['carbon_intensity_gco2_per_kwh'].mean():.0f} gCO₂/kWh")
+                m3.metric("Min Carbon", f"{dataset['carbon_intensity_gco2_per_kwh'].min():.0f} gCO₂/kWh")
+                m4.metric("Max Carbon", f"{dataset['carbon_intensity_gco2_per_kwh'].max():.0f} gCO₂/kWh")
+            
+            with st.expander("📋 View Raw Data"):
+                st.dataframe(dataset.tail(20), use_container_width=True)
+    
+    st.markdown("---")
+    
+    # =========================================================================
+    # STEP 2: FORECAST CARBON
+    # =========================================================================
+    st.header("🔮 Step 2: Forecast Carbon Intensity")
+    
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        forecast_clicked = st.button("🧠 Run LSTM", use_container_width=True)
+    
+    if forecast_clicked:
+        with st.spinner("Training LSTM model (weather → carbon)..."):
+            response = request_backend("POST", build_url(backend_url, "/forecast-carbon"), timeout=180)
+            if response:
+                dataframe = read_csv_if_exists(response.get("path"))
+                st.session_state["forecast_result"] = {"response": response, "dataframe": dataframe}
+    
+    # Show forecast results
+    if st.session_state["forecast_result"]:
+        result = st.session_state["forecast_result"]
+        response = result.get("response", {})
+        dataframe = result.get("dataframe")
+        
+        st.success(f"✅ {response.get('message', 'Forecast generated')}")
+        st.info(f"📊 Trained on data from {response.get('history_start', 'N/A')[:10]} to {response.get('history_end', 'N/A')[:10]}")
+        
+        if isinstance(dataframe, pd.DataFrame) and not dataframe.empty:
+            # Determine column name
+            carbon_col = "predicted_carbon_intensity_gco2_per_kwh"
+            if carbon_col not in dataframe.columns:
+                carbon_col = "carbon_intensity_gco2_per_kwh"
+            
+            if carbon_col in dataframe.columns:
+                # Chart
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=pd.to_datetime(dataframe["timestamp"]),
+                    y=dataframe[carbon_col],
+                    mode="lines+markers",
+                    name="Predicted Carbon",
+                    line=dict(color="#2ecc71", width=3),
+                    marker=dict(size=8),
+                ))
+                fig.update_layout(
+                    title="🌿 Predicted Carbon Intensity (Next 24h)",
+                    xaxis_title="Time",
+                    yaxis_title="Carbon Intensity (gCO₂/kWh)",
+                    template="plotly_dark",
+                    height=400,
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Best/worst hours
+                df_sorted = dataframe.sort_values(carbon_col)
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("**🌱 Greenest Hours (Low Carbon):**")
+                    for _, row in df_sorted.head(5).iterrows():
+                        ts = pd.to_datetime(row["timestamp"])
+                        val = row[carbon_col]
+                        st.markdown(f"- {ts.strftime('%H:%M')} → {val:.0f} gCO₂/kWh")
+                with col2:
+                    st.markdown("**🔥 Dirtiest Hours (High Carbon):**")
+                    for _, row in df_sorted.tail(5).iloc[::-1].iterrows():
+                        ts = pd.to_datetime(row["timestamp"])
+                        val = row[carbon_col]
+                        st.markdown(f"- {ts.strftime('%H:%M')} → {val:.0f} gCO₂/kWh")
+    
+    st.markdown("---")
+    
+    # =========================================================================
+    # STEP 3: RUN RL SCHEDULER
+    # =========================================================================
+    st.header("🧠 Step 3: Run RL Scheduler")
+    
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        rl_clicked = st.button("⚡ Optimize", use_container_width=True)
+    
+    if rl_clicked:
+        with st.spinner("Running RL scheduler..."):
+            payload = {"total_kwh": total_kwh, "max_kw": max_kw, "hours": int(hours)}
+            response = request_backend("POST", build_url(backend_url, "/run-rl"), json_payload=payload, timeout=180)
+            if response:
+                schedule_records = response.get("schedule") or []
+                dataframe = pd.DataFrame(schedule_records) if schedule_records else None
+                st.session_state["rl_result"] = {"response": response, "dataframe": dataframe}
+    
+    # Show RL results
+    if st.session_state["rl_result"]:
+        result = st.session_state["rl_result"]
+        response = result.get("response", {})
+        dataframe = result.get("dataframe")
+        
+        st.success(f"✅ {response.get('message', 'Scheduling complete')}")
+        
+        # Data source indicator
+        metadata = response.get("metadata") or {}
+        data_source = metadata.get("carbon_data_source", "unknown")
+        if data_source == "LSTM forecast":
+            st.info("🧠 **Using LSTM-predicted carbon intensity** for scheduling")
+        else:
+            st.info(f"📊 Carbon data source: {data_source}")
+        
+        # Metrics
+        carbon_saving = float(response.get("carbon_saving_percent", 0.0))
+        total_emissions = float(response.get("total_emissions_kg", 0.0))
+        energy_met = float(response.get("energy_target_met_percent", 0.0))
+        
+        m1, m2, m3 = st.columns(3)
+        m1.metric("🌿 CO₂ Reduction", f"{carbon_saving:.1f}%", delta="vs uniform")
+        m2.metric("💨 Total Emissions", f"{total_emissions:.2f} kg")
+        m3.metric("⚡ Energy Target", f"{energy_met:.0f}%")
+        
+        if isinstance(dataframe, pd.DataFrame) and not dataframe.empty:
+            # Chart
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                x=dataframe["hour"],
+                y=dataframe["energy_kwh"],
+                name="Energy (kWh)",
+                marker_color="#3498db",
+                yaxis="y1",
+            ))
+            fig.add_trace(go.Scatter(
+                x=dataframe["hour"],
+                y=dataframe["carbon_intensity_gco2_per_kwh"],
+                mode="lines+markers",
+                name="Carbon (gCO₂/kWh)",
+                line=dict(color="#e74c3c", width=3),
+                yaxis="y2",
+            ))
+            fig.update_layout(
+                title="📊 Optimized Schedule vs Carbon Intensity",
+                xaxis_title="Hour",
+                yaxis=dict(title="Energy (kWh)", side="left", color="#3498db"),
+                yaxis2=dict(title="Carbon (gCO₂/kWh)", overlaying="y", side="right", color="#e74c3c"),
+                template="plotly_dark",
+                height=450,
+                legend=dict(orientation="h", y=1.1),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Summary
+            dispatched = dataframe["energy_kwh"].sum()
+            st.info(f"⚡ Scheduled **{dispatched:.1f} kWh** across {len(dataframe)} hours")
+            
+            with st.expander("📋 View Schedule Details"):
+                st.dataframe(dataframe, use_container_width=True)
+    
+    # Footer
+    st.markdown("---")
+    st.caption("🔗 API Docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)")
 
 
 if __name__ == "__main__":

@@ -1,39 +1,53 @@
-# ⚡ Smart Grid Carbon Reduction System (Reinforcement Learning Edition)
+# ⚡ EcoGrid: Carbon-Aware Energy Scheduler
 
-An AI-powered platform that forecasts electricity demand, retrieves real-time carbon
-intensity, and optimises energy consumption with reinforcement learning to reduce CO₂
-emissions.
+An AI-powered energy scheduling system that uses **weather-based carbon intensity forecasting** and **reinforcement learning** to minimize CO₂ emissions.
+
+---
+
+## 🎯 What It Does
+
+EcoGrid intelligently schedules your energy consumption to run during the **cleanest hours** of the day — when renewable energy is abundant and carbon intensity is low.
+
+**Example:** Instead of charging your EV immediately, EcoGrid schedules it for 3 AM when wind power is high, reducing your carbon footprint by ~20%.
+
+---
+
+## 🏗️ Architecture (Connected Pipeline)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│   📡 Fetch Data                                             │
+│   └── Weather: Temperature, Humidity, Wind Speed            │
+│   └── Carbon Intensity: gCO₂/kWh from Electricity Maps      │
+│                                                             │
+│              ↓                                              │
+│                                                             │
+│   🔮 LSTM Carbon Forecaster                                 │
+│   └── Input: Weather features                               │
+│   └── Output: Predicted carbon intensity (next 24h)         │
+│                                                             │
+│              ↓                                              │
+│                                                             │
+│   🧠 RL Scheduler (PPO)                                     │
+│   └── Input: Carbon forecast + energy requirements          │
+│   └── Output: Optimized hourly energy schedule              │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key insight:** Weather → Carbon correlation is real:
+- More wind → More wind power → Lower carbon intensity
+- Higher demand (cold/hot days) → More fossil fuels → Higher carbon intensity
 
 ---
 
 ## 🚀 Features
-- LSTM-based demand forecasting with graceful PyTorch fallbacks.
-- PPO reinforcement-learning scheduler (heuristic fallback if SB3 is unavailable).
-- Carbon-aware optimisation powered by the Electricity Maps API.
-- FastAPI backend microservices for data collection, forecasting, and optimisation.
-- Streamlit dashboard for interactive visualisation of schedules and metrics.
 
----
-
-## 🧩 Project Architecture
-```
-User
-  ↓
-Streamlit Dashboard (frontend/app.py)
-  ↓ HTTP
-FastAPI Backend (backend/main.py)
-  ↓
-Data/ML Layer (backend/data, backend/forecasting, backend/rl)
-  ↓
-Processed Outputs (backend/data/processed/*.csv)
-  ↓
-Visualisations & Metrics (frontend/app.py → Plotly/Streamlit)
-```
-
-Core data flow:
-1. `/fetch-data` pulls demand (EIA), weather (Open-Meteo), and carbon intensity (Electricity Maps); saves to `backend/data/processed/raw_latest.csv`.
-2. `/forecast-demand` trains LSTM on ~1 year of history and writes `backend/data/processed/forecast_next24.csv`.
-3. `/run-rl` trains the PPO scheduler (or heuristic fallback) based on user constraints and exports `backend/data/processed/rl_schedule.csv`.
+- **Weather-based LSTM** predicts future carbon intensity using temperature, humidity, and wind speed
+- **PPO Reinforcement Learning** optimizes when to consume energy (with heuristic fallback)
+- **Real-time data** from EIA, Electricity Maps, and Open-Meteo APIs
+- **Interactive dashboard** with Plotly visualizations
 
 ---
 
@@ -47,116 +61,136 @@ Core data flow:
 <img width="1221" height="581" alt="Screenshot 2025-11-03 at 10 00 58 AM" src="https://github.com/user-attachments/assets/53ee92a3-4b08-403d-b328-c12fd4438583" />
 
 ## 🧰 Tech Stack
-- **Python**, **FastAPI**, **Streamlit**
-- **TensorFlow**, **Stable-Baselines3**, **scikit-learn**
-- **Plotly**, **Pandas**, **NumPy**, **Matplotlib**
-- Optional extras: **PyTorch**, **Gymnasium**, **Electricity Maps API**
+
+| Component | Technology |
+|-----------|------------|
+| Backend | Python, FastAPI |
+| ML/Forecasting | PyTorch LSTM |
+| RL | Stable-Baselines3 (PPO) |
+| Frontend | Streamlit, Plotly |
+| Data | Pandas, NumPy |
 
 ---
 
 ## ⚙️ Setup
 
-Clone the repository and install dependencies:
-
 ```bash
+# Clone and install
+git clone <your-repo-url>
+cd EcoGrid
 pip install -r requirements.txt
 ```
 
-### Backend
+### Run the system
+
 ```bash
-cd backend
-uvicorn main:app --reload
-# API docs → http://127.0.0.1:8000/docs
+# Terminal 1: Start backend
+uvicorn backend.main:app --reload
+
+# Terminal 2: Start frontend
+streamlit run frontend/app.py
 ```
 
-### Frontend
-```bash
-cd frontend
-streamlit run app.py
-# Dashboard → http://localhost:8501
-```
-
-Environment variables (optional) should be set before starting the backend:
-
-| Variable               | Description                                             |
-|------------------------|---------------------------------------------------------|
-| `EIA_API_KEY`          | EIA demand API key (defaults to provided sample key)    |
-| `EIA_SERIES_ID`        | Demand series (default `EBA.NYIS-ALL.D.H`)              |
-| `OPEN_METEO_LATITUDE`  | Latitude for weather data (default NYC `40.7128`)       |
-| `OPEN_METEO_LONGITUDE` | Longitude for weather data (default NYC `-74.0060`)     |
-| `ELECTRICITY_MAPS_TOKEN` | Token for carbon intensity API (required for live data) |
-| `ELECTRICITY_MAPS_ZONE`  | Zone identifier (default `US-NY`)                       |
-
-All generated datasets and artefacts live under `backend/data/processed/`.
+- **Dashboard:** http://localhost:8501
+- **API Docs:** http://127.0.0.1:8000/docs
 
 ---
 
 ## 📡 API Endpoints
 
-| Method | Endpoint           | Description                                                       |
-|--------|--------------------|-------------------------------------------------------------------|
-| GET    | `/status`          | Health check for the backend service.                            |
-| GET    | `/fetch-data`      | Downloads and stores the latest demand, weather, and carbon data.|
-| POST   | `/forecast-demand` | Runs the LSTM forecaster and saves a 24-hour demand projection.  |
-| POST   | `/run-rl`          | Trains the PPO scheduler and returns an optimised energy plan.   |
-
-Each task returns JSON metadata plus the path to the generated CSV in
-`backend/data/processed/`.
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/status` | Health check |
+| GET | `/fetch-data` | Download weather + carbon data from APIs |
+| POST | `/forecast-carbon` | Run LSTM to predict carbon intensity |
+| POST | `/run-rl` | Run RL scheduler to optimize energy consumption |
 
 ---
 
-## 📈 Workflow Summary
-1. Fetch latest demand, weather, and carbon intensity data.
-2. Train and forecast the next 24 hours of demand using the LSTM model.
-3. Run the RL agent to allocate energy to the lowest-carbon hours.
-4. Visualise the optimised schedule, carbon intensity, and CO₂ reduction metrics in Streamlit.
+## 📊 Example Workflow
+
+1. **Fetch Data** → Gets latest weather and carbon intensity
+2. **Forecast Carbon** → LSTM predicts next 24h of carbon intensity
+3. **Run RL Scheduler** → Optimizes when to use your 70 kWh
+
+**Result:** Schedule shows when to consume energy for minimal CO₂ emissions.
 
 ---
 
-## 🧪 Example Input (`POST /run-rl`)
-```json
-{
-  "total_kwh": 70,
-  "max_kw": 7.2,
-  "hours": 24
-}
+## 🔧 Environment Variables (Optional)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ELECTRICITY_MAPS_TOKEN` | API token for carbon data | - |
+| `ELECTRICITY_MAPS_ZONE` | Grid zone | `US-NY` |
+| `ENABLE_SB3_PPO` | Enable Stable-Baselines3 | `false` |
+
+---
+
+## 📁 Project Structure
+
+```
+EcoGrid/
+├── backend/
+│   ├── main.py                 # FastAPI app
+│   ├── config.py               # Configuration
+│   ├── schemas.py              # Pydantic models
+│   ├── forecasting/
+│   │   └── carbon_forecast.py  # LSTM carbon intensity predictor
+│   ├── rl/
+│   │   ├── train_ppo.py        # PPO training + heuristic fallback
+│   │   └── envs.py             # RL environment
+│   └── services/
+│       ├── data_service.py     # Data fetching
+│       ├── forecast_service.py # Forecast orchestration
+│       └── rl_service.py       # RL orchestration
+├── frontend/
+│   └── app.py                  # Streamlit dashboard
+└── requirements.txt
 ```
 
-## 🧾 Example Output
+---
+
+## 🧠 How It Works
+
+### 1. Weather → Carbon Correlation
+Wind speed is inversely correlated with carbon intensity. When it's windy, more electricity comes from wind farms (zero carbon), reducing grid-wide emissions.
+
+### 2. LSTM Forecasting
+The model learns patterns like:
+- Wind typically picks up at night → Lower carbon overnight
+- Hot afternoons → AC demand → Higher carbon
+
+### 3. RL Optimization
+Given your energy needs and the carbon forecast, the agent decides: *"I'll schedule most consumption during hours 2-6 AM when carbon is lowest."*
+
+---
+
+## 📈 Sample Output
+
 ```json
 {
-  "status": "rl_done",
-  "message": "RL scheduling completed successfully.",
-  "path": "backend/data/processed/rl_schedule.csv",
   "carbon_saving_percent": 21.7,
   "total_emissions_kg": 42.8,
-  "total_energy_scheduled_kwh": 70.0,
-  "energy_target_met_percent": 100.0,
   "schedule": [
-    {"hour": 1, "carbon_intensity_gco2_per_kwh": 240, "energy_kwh": 2.8},
-    {"hour": 2, "carbon_intensity_gco2_per_kwh": 180, "energy_kwh": 4.5},
-    "... more hourly entries ..."
+    {"hour": 1, "carbon_intensity": 280, "energy_kwh": 2.8},
+    {"hour": 2, "carbon_intensity": 220, "energy_kwh": 5.5},
+    ...
   ]
 }
 ```
 
 ---
 
-## 🧠 Future Improvements
-- Integrate solar and wind generation forecasts using Open-Meteo solar radiation data.
-- Extend to multi-agent RL for coordinating multiple devices or facilities.
-- Connect with IoT smart plugs, EV APIs, or building management systems for closed-loop control.
+## 🌱 Future Improvements
+
+- [ ] Real-time IoT integration (smart plugs, EV chargers)
+- [ ] Multi-objective optimization (cost + carbon)
+- [ ] Transformer models for better forecasting
+- [ ] Multi-region support
 
 ---
 
-## ✅ Repository Checklist
-1. `requirements.txt` includes all backend and frontend dependencies.
-2. `backend/` and `frontend/` directories contain runnable applications.
-3. `backend/data/processed/` holds all generated CSV artefacts.
-4. Documentation covers architecture, setup, endpoints, and example payloads.
+## 📜 License
 
-Once the backend and frontend are running, the complete system can be exercised locally with:
-```bash
-uvicorn backend.main:app --reload
-streamlit run frontend/app.py
-```
+MIT License

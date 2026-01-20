@@ -1,3 +1,5 @@
+"""RL scheduling service for carbon-aware energy optimization."""
+
 from __future__ import annotations
 
 import logging
@@ -17,26 +19,51 @@ def run_rl_scheduler(
     carbon_intensity_path: Optional[Path] = None,
     episodes: int = 200,
 ) -> Tuple[Path, list[dict], dict]:
-    """Train the PPO scheduler and persist the resulting schedule."""
+    """
+    Train the RL scheduler and generate an optimized energy schedule.
+    
+    Priority order for carbon intensity data:
+    1. LSTM forecast (carbon_forecast_next24.csv) - predicted values
+    2. User-provided path
+    3. Latest fetched carbon data (carbon_latest.csv)
+    4. Combined raw data (raw_latest.csv)
+    5. Synthetic data (fallback)
+    """
     processed_dir = config.ensure_processed_dir()
     resolved_carbon_path = carbon_intensity_path
+    data_source = "user-provided"
 
     if resolved_carbon_path is None:
-        candidate = processed_dir / "carbon_latest.csv"
-        if candidate.exists():
-            resolved_carbon_path = candidate
+        # Priority 1: Use LSTM carbon forecast if available
+        forecast_path = processed_dir / "carbon_forecast_next24.csv"
+        if forecast_path.exists():
+            resolved_carbon_path = forecast_path
+            data_source = "LSTM forecast"
+            logger.info("Using LSTM carbon intensity forecast for scheduling.")
         else:
-            # Fallback to merged dataset if carbon export not present.
-            merged = processed_dir / "raw_latest.csv"
-            if merged.exists():
-                resolved_carbon_path = merged
+            # Priority 2: Latest fetched carbon data
+            carbon_latest = processed_dir / "carbon_latest.csv"
+            if carbon_latest.exists():
+                resolved_carbon_path = carbon_latest
+                data_source = "fetched data"
+            else:
+                # Priority 3: Combined raw dataset
+                raw_latest = processed_dir / "raw_latest.csv"
+                if raw_latest.exists():
+                    resolved_carbon_path = raw_latest
+                    data_source = "raw combined data"
 
     if resolved_carbon_path:
-        logger.info("Using carbon data at %s for RL scheduling.", resolved_carbon_path)
+        logger.info(
+            "Using carbon data from %s (%s) for RL scheduling.",
+            resolved_carbon_path,
+            data_source,
+        )
     else:
         logger.warning(
-            "No carbon intensity dataset found. Scheduler will rely on synthetic data."
+            "No carbon intensity data found. Scheduler will use synthetic data."
         )
+        data_source = "synthetic"
 
     schedule_path, schedule_records, metadata = train_and_schedule(
         energy_kwh=energy_kwh,
@@ -46,5 +73,9 @@ def run_rl_scheduler(
         output_dir=processed_dir,
         episodes=episodes,
     )
+    
+    # Add data source to metadata for transparency
+    metadata["carbon_data_source"] = data_source
+    
     logger.info("RL scheduling complete. Saved to %s.", schedule_path)
     return schedule_path, schedule_records, metadata

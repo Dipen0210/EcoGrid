@@ -6,19 +6,30 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, PositiveInt, validator
 
 
-class ForecastRequest(BaseModel):
+class CarbonForecastRequest(BaseModel):
+    """Request for carbon intensity forecast using weather data."""
     data_path: Optional[str] = Field(
         None,
-        description="Optional path to historical demand data CSV to feed the forecaster.",
+        description="Optional path to combined weather+carbon data CSV.",
     )
     horizon_hours: PositiveInt = Field(
         24,
         le=168,
-        description="Number of hours to forecast (up to 7 days).",
+        description="Number of hours to forecast carbon intensity (up to 7 days).",
     )
 
     def resolve_data_path(self) -> Optional[Path]:
         return Path(self.data_path).expanduser().resolve() if self.data_path else None
+
+
+class CarbonForecastResponse(BaseModel):
+    """Response from carbon intensity forecast."""
+    status: str = "forecast_done"
+    message: str
+    path: str
+    forecast_hours: int
+    history_start: str
+    history_end: str
 
 
 class RLRequest(BaseModel):
