@@ -73,15 +73,6 @@ EcoGrid intelligently schedules your energy consumption to run during the **clea
 
 ---
 
-## ⚙️ Setup
-
-```bash
-# Clone and install
-git clone <your-repo-url>
-cd EcoGrid
-pip install -r requirements.txt
-```
-
 ### Run the system
 
 ```bash
