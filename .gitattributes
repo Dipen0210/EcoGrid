@@ -1,0 +1,5 @@
+# Mark generated HTML files as generated (exclude from language stats)
+frontend/output/*.html linguist-generated=true
+
+# Mark data files as generated
+backend/data/processed/*.csv linguist-generated=true
