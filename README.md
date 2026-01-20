@@ -24,7 +24,7 @@ EcoGrid intelligently schedules your energy consumption to run during the **clea
 │              ↓                                              │
 │                                                             │
 │   🔮 LSTM Carbon Forecaster                                 │
-│   └── Input: Weather features                               │
+│   └── Input: Weather features (Solar, wind, hydro)          │
 │   └── Output: Predicted carbon intensity (next 24h)         │
 │                                                             │
 │              ↓                                              │
@@ -37,7 +37,7 @@ EcoGrid intelligently schedules your energy consumption to run during the **clea
 ```
 
 **Key insight:** Weather → Carbon correlation is real:
-- More wind → More wind power → Lower carbon intensity
+- More wind or high sun beams → More wind power or more solar power → Lower carbon intensity
 - Higher demand (cold/hot days) → More fossil fuels → Higher carbon intensity
 
 ---
@@ -93,7 +93,7 @@ streamlit run frontend/app.py
 ```
 
 - **Dashboard:** http://localhost:8501
-- **API Docs:** http://127.0.0.1:8000/docs
+- **API Docs:** http://127.0.0.1:8000
 
 ---
 
