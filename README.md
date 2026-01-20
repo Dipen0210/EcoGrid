@@ -53,12 +53,13 @@ EcoGrid intelligently schedules your energy consumption to run during the **clea
 
 ## Dashboard
 
-<img width="1470" height="580" alt="Screenshot 2025-10-26 at 12 36 13 AM" src="https://github.com/user-attachments/assets/66273244-7e8d-4bea-949b-44f0f7006c85" />
+<img width="1470" height="469" alt="Screenshot 2026-01-19 at 6 28 10 PM" src="https://github.com/user-attachments/assets/ae5bf520-fe65-4b26-bc76-65537a7e20b2" />
 
+<img width="1470" height="753" alt="Screenshot 2026-01-19 at 6 27 41 PM" src="https://github.com/user-attachments/assets/41fed56b-8e64-4b56-99a2-a67b92eb0744" />
 
-<img width="1213" height="591" alt="Screenshot 2025-11-03 at 10 01 12 AM" src="https://github.com/user-attachments/assets/88f92514-7c42-478d-94bd-295a90cb01c4" />
+<img width="1470" height="744" alt="Screenshot 2026-01-19 at 6 27 23 PM" src="https://github.com/user-attachments/assets/e33437d6-5bcb-4942-8f7b-4d9fb62f3979" />
 
-<img width="1221" height="581" alt="Screenshot 2025-11-03 at 10 00 58 AM" src="https://github.com/user-attachments/assets/53ee92a3-4b08-403d-b328-c12fd4438583" />
+<img width="1470" height="745" alt="Screenshot 2026-01-19 at 6 27 11 PM" src="https://github.com/user-attachments/assets/dddfd7ae-38b1-4c48-9ee3-8a0e55bcb038" />
 
 ## 🧰 Tech Stack
 
