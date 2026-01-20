@@ -93,7 +93,7 @@ streamlit run frontend/app.py
 ```
 
 - **Dashboard:** http://localhost:8501
-- **API Docs:** http://127.0.0.1:8000
+- **Backend:** http://127.0.0.1:8000
 
 ---
 
